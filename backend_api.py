@@ -7,6 +7,8 @@ import paho.mqtt.client as mqtt
 from collections import deque # 데이터 히스토리 관리를 위해 사용
 import numpy as np
 from scipy.signal.windows import flattop
+from database import save_piezo_data, save_adxl_data, close_db
+from config import settings
 
 app = FastAPI()
 
@@ -42,8 +44,6 @@ db = {
 }
 
 # --- MQTT 설정 ---
-MQTT_BROKER = "127.0.0.1"
-MQTT_PORT = 1883
 MQTT_TOPIC = "sensor/data"
 
 # --- [추가] Window Function 로직 ---
@@ -92,15 +92,18 @@ def on_message(client, userdata, msg):
             # 프론트엔드 SensorDataPoint 형식에 맞춤
             data_point = {"value": val, "timestamp": ts}
             db["piezo"]["history"].append(data_point)
+
+            # 메모리(프론트엔드용)에 넣은 직후 DB에도 영구 저장!
+            save_piezo_data(val, ts)
             
         elif sensor_type == "adxl" and len(samples) >= 3:
-            data_point = {
-                "x": round(samples[0] / 1000.0, 4),
-                "y": round(samples[1] / 1000.0, 4),
-                "z": round(samples[2] / 1000.0, 4),
-                "timestamp": ts
-            }
+            x_val, y_val, z_val = round(samples[0]/1000.0, 4), round(samples[1]/1000.0, 4), round(samples[2]/1000.0, 4)
+            data_point = {"x": x_val, "y": y_val, "z": z_val, "timestamp": ts}
             db["adxl"]["history"].append(data_point)
+
+            # DB 영구 저장!
+            save_adxl_data(x_val, y_val, z_val, ts)
+
 
     except Exception as e:
         print(f"❌ 데이터 처리 에러: {e}")
@@ -133,12 +136,14 @@ mqtt_client.on_message = on_message
 
 @app.on_event("startup")
 async def startup_event():
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
+    mqtt_client.connect(settings.mqtt_broker, settings.mqtt_port)
     mqtt_client.loop_start()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     mqtt_client.loop_stop()
+    # 서버가 꺼질 때 InfluxDB 연결도 깔끔하게 닫기
+    close_db()
 
 # --- API 엔드포인트 ---
 

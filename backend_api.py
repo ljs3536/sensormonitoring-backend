@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import paho.mqtt.client as mqtt
 from collections import deque # 데이터 히스토리 관리를 위해 사용
 import numpy as np
+from scipy.signal.windows import flattop
 
 app = FastAPI()
 
@@ -44,6 +45,16 @@ db = {
 MQTT_BROKER = "127.0.0.1"
 MQTT_PORT = 1883
 MQTT_TOPIC = "sensor/data"
+
+# --- [추가] Window Function 로직 ---
+def get_window(window_type: str, size: int):
+    window_type = window_type.lower()
+    if window_type == "hann": return np.hanning(size)
+    elif window_type == "hamming": return np.hamming(size)
+    elif window_type == "blackman": return np.blackman(size)
+    elif window_type == "flattop": return flattop(size)
+    elif window_type == "none": return np.ones(size)
+    else: return np.hanning(size) # 기본값
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
@@ -95,9 +106,8 @@ def on_message(client, userdata, msg):
         print(f"❌ 데이터 처리 에러: {e}")
 
 # --- [추가] FFT 연산 핵심 로직 ---
-def compute_fft_data(samples, sample_rate: int):
-    if len(samples) < 2:
-        return []
+def compute_fft_data(samples, sample_rate: int, window_type: str = "hann"):
+    if len(samples) < 2: return []
     
     # 1. 평균(DC 성분) 제거
     x = np.array(samples, dtype=float)
@@ -113,10 +123,7 @@ def compute_fft_data(samples, sample_rate: int):
     mags = np.abs(rfft) / len(xw) # 진폭 정규화
     
     # 프론트엔드가 그리기 편한 [{frequency: ..., magnitude: ...}] 형태로 변환
-    fft_result = []
-    for f, m in zip(freqs, mags):
-        fft_result.append({"frequency": round(float(f), 2), "magnitude": round(float(m), 4)})
-        
+    fft_result = [{"frequency": round(float(f), 2), "magnitude": round(float(m), 4)} for f, m in zip(freqs, mags)]
     return fft_result
 
 # --- MQTT 클라이언트 초기화 ---
@@ -151,7 +158,7 @@ async def get_latest_data(sensor_type: str):
 
 # --- [추가] FFT 전용 API 엔드포인트 ---
 @app.get("/api/data/fft/{sensor_type}")
-async def get_fft_data(sensor_type: str, sample_rate: int = 1000, axis: str = "x"):
+async def get_fft_data(sensor_type: str, sample_rate: int = 1000, axis: str = "x", window: str = "hann"):
     if sensor_type not in db or not db[sensor_type]["history"]:
         return []
 

@@ -1,3 +1,4 @@
+# 간단한 연결 테스트 페이지
 import paho.mqtt.client as mqtt
 import json
 

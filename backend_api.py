@@ -1,8 +1,11 @@
 import json
 import asyncio
+import time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import paho.mqtt.client as mqtt
+from collections import deque # 데이터 히스토리 관리를 위해 사용
+import numpy as np
 
 app = FastAPI()
 
@@ -14,10 +17,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 상태 관리 (가장 최근에 수신한 센서 데이터를 메모리에 저장) ---
-latest_data = {
-    "piezo": None,
-    "adxl": None
+# --- 상태 관리 (메모리 내 저장소) ---
+# 프론트엔드 그래프를 위해 최근 100개의 데이터를 보관합니다.
+MAX_HISTORY = 100
+
+db = {
+    "piezo": {
+        "history": deque(maxlen=MAX_HISTORY),
+        "config": {
+            "piezoSampleRate": 1000,
+            "piezoSampleCount": 1024,
+            "piezoFmax": 500
+        }
+    },
+    "adxl": {
+        "history": deque(maxlen=MAX_HISTORY),
+        "config": {
+            "memsSampleRate": 1000,
+            "memsSampleCount": 1024,
+            "gRange": "2g"
+        }
+    }
 }
 
 # --- MQTT 설정 ---
@@ -32,40 +52,122 @@ def on_connect(client, userdata, flags, reason_code, properties):
     else:
         print(f"❌ 연결 실패: {reason_code}")
 
+def parse_samples(hex_str: str):
+    samples = []
+    for i in range(0, len(hex_str), 4):
+        chunk = hex_str[i:i+4]
+        if len(chunk) != 4:
+            continue
+        value = int(chunk, 16)
+        # signed int16 변환
+        if value >= 0x8000:
+            value -= 0x10000
+        samples.append(value)
+    return samples
+
+
 def on_message(client, userdata, msg):
     try:
-        raw_data = msg.payload.decode('utf-8')
-        parsed_data = json.loads(raw_data)
-        
-        # 센서 타입(adxl 또는 piezo)을 확인하고 latest_data 딕셔너리 갱신
-        sensor_type = parsed_data.get("sensor")
-        if sensor_type in latest_data:
-            latest_data[sensor_type] = parsed_data
-            
-    except Exception as e:
-        print(f"데이터 파싱 에러: {e}")
+        raw_payload = json.loads(msg.payload.decode('utf-8'))
+        sensor_type = raw_payload.get("sensor")
+        hex_data = raw_payload.get("hex_data")
+        ts = raw_payload.get("timestamp", time.time())
 
-mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="Backend_API")
-mqtt_client.on_connect = on_connect
+        if not hex_data: return
+        samples = parse_samples(hex_data)
+
+        if sensor_type == "piezo" and len(samples) >= 1:
+            val = round(samples[0] / 1000.0, 4)
+            # 프론트엔드 SensorDataPoint 형식에 맞춤
+            data_point = {"value": val, "timestamp": ts}
+            db["piezo"]["history"].append(data_point)
+            
+        elif sensor_type == "adxl" and len(samples) >= 3:
+            data_point = {
+                "x": round(samples[0] / 1000.0, 4),
+                "y": round(samples[1] / 1000.0, 4),
+                "z": round(samples[2] / 1000.0, 4),
+                "timestamp": ts
+            }
+            db["adxl"]["history"].append(data_point)
+
+    except Exception as e:
+        print(f"❌ 데이터 처리 에러: {e}")
+
+# --- [추가] FFT 연산 핵심 로직 ---
+def compute_fft_data(samples, sample_rate: int):
+    if len(samples) < 2:
+        return []
+    
+    # 1. 평균(DC 성분) 제거
+    x = np.array(samples, dtype=float)
+    x -= np.mean(x)
+    
+    # 2. 해닝 창(Hanning Window) 적용하여 노이즈 감소
+    window = np.hanning(len(x))
+    xw = x * window
+    
+    # 3. Real FFT 연산
+    rfft = np.fft.rfft(xw)
+    freqs = np.fft.rfftfreq(len(xw), d=1/sample_rate)
+    mags = np.abs(rfft) / len(xw) # 진폭 정규화
+    
+    # 프론트엔드가 그리기 편한 [{frequency: ..., magnitude: ...}] 형태로 변환
+    fft_result = []
+    for f, m in zip(freqs, mags):
+        fft_result.append({"frequency": round(float(f), 2), "magnitude": round(float(m), 4)})
+        
+    return fft_result
+
+# --- MQTT 클라이언트 초기화 ---
+mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="Backend_API_v2")
+mqtt_client.on_connect = lambda c, u, f, r, p: c.subscribe(MQTT_TOPIC) if r==0 else None
 mqtt_client.on_message = on_message
 
-# --- FastAPI 수명주기 이벤트 (서버 시작/종료 시 MQTT 클라이언트 관리) ---
 @app.on_event("startup")
 async def startup_event():
     mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-    # loop_forever() 대신 loop_start()를 사용하여 백그라운드 스레드에서 MQTT 처리 (FastAPI를 막지 않음)
-    mqtt_client.loop_start() 
+    mqtt_client.loop_start()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     mqtt_client.loop_stop()
-    mqtt_client.disconnect()
 
-# --- 프론트엔드(Next.js)가 Polling으로 호출할 API 엔드포인트 ---
-@app.get("/api/data/latest")
-async def get_latest_data():
-    return latest_data
+# --- API 엔드포인트 ---
+
+# 1. 최신 데이터 및 히스토리 조회 (Polling용) - 요청한 센서 데이터만 반환하도록 수정!
+@app.get("/api/data/latest/{sensor_type}")
+async def get_latest_data(sensor_type: str):
+    if sensor_type not in db:
+        return {"error": "Invalid sensor type"}
+    
+    history_data = list(db[sensor_type]["history"])
+    latest_data = history_data[-1] if history_data else None
+
+    return {
+        "latest": latest_data,
+        "history": history_data
+    }
+
+# --- [추가] FFT 전용 API 엔드포인트 ---
+@app.get("/api/data/fft/{sensor_type}")
+async def get_fft_data(sensor_type: str, sample_rate: int = 1000, axis: str = "x"):
+    if sensor_type not in db or not db[sensor_type]["history"]:
+        return []
+
+    history_data = list(db[sensor_type]["history"])
+    
+    # 센서 타입에 따라 데이터 추출
+    if sensor_type == "piezo":
+        samples = [item["value"] for item in history_data]
+    else: # adxl
+        samples = [item.get(axis, 0.0) for item in history_data]
+
+    # FFT 연산 후 반환
+    fft_result = compute_fft_data(samples, sample_rate)
+    return fft_result
+
 
 @app.get("/")
 async def root():
-    return {"message": "Sensor Backend API is running! Go to /api/data/latest"}
+    return {"message": "Advanced Sensor Backend is running"}

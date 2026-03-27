@@ -10,6 +10,10 @@ from fft_processor import compute_fft_data
 from mqtt_handler import setup_mqtt
 from datetime import datetime
 
+# ai 호출
+import httpx
+from config import settings
+
 app = FastAPI()
 
 app.add_middleware(
@@ -69,3 +73,21 @@ async def get_db_history_data(sensor_type: str, start_iso: str, end_iso: str, ax
         }
     except ValueError:
         return {"error": "Invalid date format. Use ISO 8601 format."}
+    
+
+@app.post("/api/ai/train/{sensor_type}")
+async def request_train(sensor_type: str):
+    async with httpx.AsyncClient() as client:
+        # AI 서비스에 학습 명령 전달
+        response = await client.post(f"{settings.ai_url}/train", params={"sensor_type": sensor_type})
+        return response.json()
+
+@app.get("/api/ai/analyze/{sensor_type}")
+async def request_analysis(sensor_type: str):    
+    # 2. AI 서비스에 분석 요청
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.ai_url}/predict", 
+            params={"sensor_type": sensor_type}
+        )
+        return response.json()

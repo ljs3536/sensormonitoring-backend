@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     mqtt_broker: str = "127.0.0.1" # 기본값 설정 가능
     mqtt_port: int = 1883
 
+    ai_url: str
+    
     class Config:
         env_file = ".env" # 이 클래스가 실행될 때 .env 파일을 읽어오라고 지시
 

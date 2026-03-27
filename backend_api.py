@@ -76,18 +76,30 @@ async def get_db_history_data(sensor_type: str, start_iso: str, end_iso: str, ax
     
 
 @app.post("/api/ai/train/{sensor_type}")
-async def request_train(sensor_type: str):
+async def request_train(sensor_type: str, model_type: str = "AutoEncoder", days: int = 7):
     async with httpx.AsyncClient() as client:
-        # AI 서비스에 학습 명령 전달
-        response = await client.post(f"{settings.ai_url}/train", params={"sensor_type": sensor_type})
+        # AI 서비스에 학습 명령 전달 (model_type 추가)
+        response = await client.post(
+            f"{settings.ai_url}/train", 
+            params={"sensor_type": sensor_type, "model_type": model_type, "days": days}
+        )
         return response.json()
 
-@app.get("/api/ai/analyze/{sensor_type}")
-async def request_analysis(sensor_type: str):    
-    # 2. AI 서비스에 분석 요청
+@app.post("/api/ai/analyze/{sensor_type}")
+async def request_analysis(sensor_type: str, data: list, model_type: str = "AutoEncoder"): 
+    """
+    프론트엔드에서 받은 센서 RAW 데이터를 AI 서비스로 전달합니다.
+    """
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{settings.ai_url}/predict", 
-            params={"sensor_type": sensor_type}
+            json=data, # 프론트엔드가 던진 데이터를 그대로 바디에 실음
+            params={"sensor_type": sensor_type, "model_type": model_type}
         )
+        return response.json()
+
+@app.get("/api/ai/status")
+async def get_ai_status():
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{settings.ai_url}/status")
         return response.json()

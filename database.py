@@ -22,24 +22,26 @@ query_api = client.query_api()
 
 
 # --- [2] 데이터 저장 함수들 ---
-def save_piezo_data(voltage: float, timestamp: float):
+def save_piezo_data(voltage: float, timestamp: float, label: str = "normal"):
     point = (
         influxdb_client.Point("piezo_sensor")
+        .tag("label", label)
         .field("voltage", voltage)
         .time(int(timestamp * 1e9))
     )
     # 🌟 settings.influxdb_bucket 사용
     write_api.write(bucket=settings.influxdb_bucket, org=settings.influxdb_org, record=point)
 
-def save_adxl_data(x: float, y: float, z: float, timestamp: float):
+def save_adxl_data(x: float, y: float, z: float, timestamp: float, label: str = "normal"):
     point = (
         influxdb_client.Point("adxl_sensor")
+        .tag("label", label)
         .field("x", x)
         .field("y", y)
         .field("z", z)
         .time(int(timestamp * 1e9))
     )
-    # 🌟 settings.influxdb_bucket 사용
+    # settings.influxdb_bucket 사용
     write_api.write(bucket=settings.influxdb_bucket, org=settings.influxdb_org, record=point)
 
 def get_historical_data(sensor_type: str, start_time: datetime.datetime, end_time: datetime.datetime, axis: str = "x"):

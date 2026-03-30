@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from collections import deque
+from fastapi import Body
 
 # 분리한 모듈들 불러오기
 from database import close_db, get_historical_data
@@ -94,8 +95,9 @@ async def get_ai_models(sensor_type: str = None):
         return response.json()
 
 @app.post("/api/ai/predict/{model_id}")
-async def request_analysis(model_id: int, data: list): 
+async def request_analysis(model_id: int, data: list = Body(...)): 
     """프론트엔드에서 보낸 데이터를 특정 모델 ID로 예측합니다."""
+    print("받은 데이터:",data)
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{settings.ai_url}/predict", 

@@ -1,9 +1,10 @@
 # 메인 API 라우터
 # sensor-backend/backend_api.py
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from collections import deque
 from fastapi import Body
+from typing import List
 
 # 분리한 모듈들 불러오기
 from database import close_db, get_historical_data
@@ -29,15 +30,48 @@ db = {
 
 mqtt_client = None
 
+class ConnectionManager:
+    def __init__(self):
+        # 연결된 웹소켓들을 관리하는 리스트
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        # 연결된 모든 클라이언트에게 데이터 전송
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                # 끊긴 연결은 자동으로 정리할 수도 있음
+                pass
+
+manager = ConnectionManager()
+
 @app.on_event("startup")
 async def startup_event():
     global mqtt_client
-    mqtt_client = setup_mqtt(db) # 모듈화된 MQTT 시작
+    mqtt_client = setup_mqtt(db, manager) # 모듈화된 MQTT 시작, websocket 추가
 
 @app.on_event("shutdown")
 async def shutdown_event():
     if mqtt_client: mqtt_client.loop_stop()
     close_db()
+
+@app.websocket("/ws/sensor/{sensor_type}")
+async def websocket_endpoint(websocket: WebSocket, sensor_type: str):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # 웹소켓 유지를 위한 루프 (클라이언트가 메시지를 보낼 일은 없으므로 대기)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 # 실시간 데이터 폴링 API
 @app.get("/api/data/latest/{sensor_type}")

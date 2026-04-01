@@ -11,8 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 4. 소스 코드 복사
 COPY . .
 
-# 5. 포트 설정 (FastAPI 기본 8000)
-EXPOSE 8000
+# 5. 포트 설정
+EXPOSE 8001
 
 # 6. 실행 명령 (Uvicorn 등을 사용하여 실행)
 CMD ["uvicorn", "backend_api:app"]

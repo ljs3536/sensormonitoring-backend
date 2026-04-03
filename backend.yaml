@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sensor-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sensor-backend
+  template:
+    metadata:
+      labels:
+        app: sensor-backend
+    spec:
+      containers:
+        - name: sensor-backend
+          image: k3d-my-cluster-registry:5000/sensor-backend:v1.0
+          ports:
+            - containerPort: 8002
+          # 우리가 만든 Secret과 ConfigMap에서 환경 변수를 가져옵니다.
+          envFrom:
+            - configMapRef:
+                name: sensor-config
+            - secretRef:
+                name: sensor-secret
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+spec:
+  selector:
+    app: sensor-backend
+  ports:
+    - port: 8002
+      targetPort: 8002

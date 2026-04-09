@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8001
 
 # 6. 실행 명령 (Uvicorn 등을 사용하여 실행)
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["python", "-m", "uvicorn", "backend_api:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -32,3 +32,11 @@ Bucket Name: 데이터를 담을 바구니 이름 (예: sensor_data)
 
 # API Token
 m7B0P2yETOdQ3M70i9qAk3GvpiEolGak0oQoT27rqnXI5VXvPS_DkK7tqG7-k5Kk_5PQr-MukXFGOsaYN_AD0g==
+
+
+docker exec -it <container-id> influx delete \
+--bucket sensor_data \
+--start "1970-01-01T00:00:00Z" \
+--stop "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 
+--token <token> \
+--org sensor_hq

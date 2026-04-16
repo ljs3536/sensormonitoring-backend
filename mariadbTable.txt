@@ -1,0 +1,32 @@
+-- sensor_db.ai_models definition
+
+CREATE TABLE `ai_models` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sensor_type` varchar(50) NOT NULL,
+  `model_type` varchar(50) NOT NULL,
+  `status` varchar(20) NOT NULL,
+  `file_path` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `is_deleted` tinyint(1) DEFAULT 0,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sensor_type` (`sensor_type`),
+  KEY `idx_active_models` (`is_deleted`,`sensor_type`)
+) ENGINE=InnoDB AUTO_INCREMENT=53 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- sensor_db.sensors definition
+
+CREATE TABLE `sensors` (
+  `id` varchar(50) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `type` enum('piezo','adxl') NOT NULL,
+  `sampling_rate` int(11) DEFAULT 1000,
+  `threshold_min` float DEFAULT NULL,
+  `threshold_max` float DEFAULT NULL,
+  `location` varchar(200) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

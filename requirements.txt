@@ -16,6 +16,7 @@ paho-mqtt==2.1.0
 pydantic==2.12.5
 pydantic-settings==2.13.1
 pydantic_core==2.41.5
+PyMySQL==1.1.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 reactivex==4.1.0

@@ -4,7 +4,6 @@ import time
 import paho.mqtt.client as mqtt
 import asyncio
 from config import settings
-from database import save_piezo_data, save_adxl_data
 import numpy as np
 from fft_processor import compute_fft_data
 
@@ -47,8 +46,6 @@ def setup_mqtt(memory_db, ws_manager):
                     current_ts = ts + (i * time_step) # 타임스탬프 미세 분배
                     
                     memory_db["piezo"]["history"].append({"value": real_val, "timestamp": current_ts})
-                    # DB 저장 함수에 label을 함께 넘겨줍니다.
-                    save_piezo_data(real_val, current_ts, label) 
                     
             elif sensor_type == "adxl":
                 # ADXL은 x,y,z 3개가 한 세트이므로 3개씩 묶어서 처리합니다.
@@ -61,8 +58,6 @@ def setup_mqtt(memory_db, ws_manager):
                     current_ts = ts + ((i//3) * time_step)
                     
                     memory_db["adxl"]["history"].append({"x": x_val, "y": y_val, "z": z_val, "timestamp": current_ts})
-                    # DB 저장 함수에 label을 함께 넘겨줍니다.
-                    save_adxl_data(x_val, y_val, z_val, current_ts, label)
 
             # --- 웹소켓으로 실시간 브로드캐스트 ---
             # MQTT 스레드에서 FastAPI의 비동기 함수인 broadcast를 안전하게 호출합니다.

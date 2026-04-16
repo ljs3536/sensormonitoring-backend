@@ -1,7 +1,6 @@
 # sensor-backend/database.py
 
 import influxdb_client
-from influxdb_client.client.write_api import ASYNCHRONOUS
 from config import settings # config.py에서 settings 객체 불러오기!
 import datetime
 
@@ -17,32 +16,8 @@ client = influxdb_client.InfluxDBClient(
 # ==========================================
 # 2. 쓰기 및 읽기 API 객체 생성 (client 생성 이후에 위치!)
 # ==========================================
-write_api = client.write_api(write_options=ASYNCHRONOUS)
 query_api = client.query_api()
 
-
-# --- [2] 데이터 저장 함수들 ---
-def save_piezo_data(voltage: float, timestamp: float, label: str = "normal"):
-    point = (
-        influxdb_client.Point("piezo_sensor")
-        .tag("label", label)
-        .field("voltage", voltage)
-        .time(int(timestamp * 1e9))
-    )
-    # 🌟 settings.influxdb_bucket 사용
-    write_api.write(bucket=settings.influxdb_bucket, org=settings.influxdb_org, record=point)
-
-def save_adxl_data(x: float, y: float, z: float, timestamp: float, label: str = "normal"):
-    point = (
-        influxdb_client.Point("adxl_sensor")
-        .tag("label", label)
-        .field("x", x)
-        .field("y", y)
-        .field("z", z)
-        .time(int(timestamp * 1e9))
-    )
-    # settings.influxdb_bucket 사용
-    write_api.write(bucket=settings.influxdb_bucket, org=settings.influxdb_org, record=point)
 
 def get_historical_data(sensor_type: str, start_time: datetime.datetime, end_time: datetime.datetime, axis: str = "x"):
     """사용자가 지정한 절대 시간 범위 내의 센서 데이터를 InfluxDB에서 조회합니다."""
@@ -93,5 +68,4 @@ def get_historical_data(sensor_type: str, start_time: datetime.datetime, end_tim
                 
     return results
 def close_db():
-    write_api.close()
     client.close()

@@ -13,12 +13,12 @@ router = APIRouter(
 
 
 @router.post("/train/{sensor_type}")
-async def request_train(sensor_type: str, model_type: str = "AutoEncoder", days: int = 7):
+async def request_train(sensor_type: str, model_type: str = "AutoEncoder", sensor_id: str=None, days: int = 7):
     async with httpx.AsyncClient() as client:
         # AI 서비스에 학습 명령 전달 (model_type 추가)
         response = await client.post(
             f"{settings.ai_url}/train", 
-            params={"sensor_type": sensor_type, "model_type": model_type, "days": days}
+            params={"sensor_type": sensor_type, "model_type": model_type, "sensor_id": sensor_id, "days": days}
         )
         return response.json()
 
@@ -31,14 +31,14 @@ async def get_ai_models(sensor_type: str = None):
         return response.json()
 
 @router.post("/predict/{sensor_type}")
-async def request_analysis(sensor_type: str, model_id: int, data: list = Body(...)): 
+async def request_analysis(sensor_type: str, model_id: int, sensor_id: str=None, data: list = Body(...)): 
     """프론트엔드에서 보낸 데이터를 특정 모델 ID로 예측합니다."""
     print("받은 데이터:",data)
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{settings.ai_url}/predict", 
             json=data, # 프론트에서 보낸 배열 데이터
-            params={"sensor_type": sensor_type,"model_id": model_id} # 모델 ID 전달
+            params={"sensor_type": sensor_type,"model_id": model_id, "sensor_id": sensor_id} # 모델 ID 전달
         )
         return response.json()
 

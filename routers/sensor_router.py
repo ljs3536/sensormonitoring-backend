@@ -19,6 +19,10 @@ class SensorBase(BaseModel):
     threshold_min: Optional[float] = None
     threshold_max: Optional[float] = None
     location: Optional[str] = None
+    physics_k: Optional[float] = None
+    physics_c: Optional[float] = None
+    physics_m: Optional[float] = None
+    ambient_temp: Optional[float] = None
     is_active: bool = True
 
 class SensorCreate(SensorBase):

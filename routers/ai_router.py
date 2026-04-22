@@ -41,7 +41,16 @@ async def request_analysis(sensor_type: str, model_id: int, sensor_id: str=None,
             params={"sensor_type": sensor_type,"model_id": model_id, "sensor_id": sensor_id} # 모델 ID 전달
         )
         return response.json()
-
+    
+@router.post("/{sensor_id}/auto_tune")
+async def request_auto_tune(sensor_id: str, sensor_type: str, days: int = 7):
+    async with httpx.AsyncClient(timeout=None) as client:
+        response = await client.post(
+            f"{settings.ai_url}/auto_tune", 
+            params={"sensor_id": sensor_id, "sensor_type": sensor_type, "days": days}
+        )
+        return response.json()
+    
 @router.delete("/models/{model_id}")
 async def delete_ai_model(model_id: int):
     """AI 모델 삭제 중계"""

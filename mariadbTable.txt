@@ -29,7 +29,11 @@ CREATE TABLE `sensors` (
   `physics_c` float DEFAULT 0.01,
   `physics_m` float DEFAULT 1,
   `ambient_temp` float DEFAULT 25,
+  `recommended_k` float DEFAULT NULL,
+  `recommended_c` float DEFAULT NULL,
+  `recommended_threshold` float DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT 1,
+  `last_calibrated_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`)

@@ -19,6 +19,11 @@ class Sensor(Base): # 클래스명은 파이썬 관례상 PascalCase(대문자 �
     physics_m = Column(Float, default=1.0)
     ambient_temp = Column(Float, default=25.0)
 
+    recommended_k = Column(Float, nullable=True)
+    recommended_c = Column(Float, nullable=True)
+    recommended_threshold = Column(Float, nullable=True)
+    
     is_active = Column(Boolean, default=True)
+    last_calibrated_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

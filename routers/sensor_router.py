@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from database_rdb import get_db # DB 세션 가져오는 함수 (구현되어 있다고 가정)
 from sensors import Sensor       # 방금 만든 SQLAlchemy 모델
+from datetime import datetime
 
 router = APIRouter(
     prefix="/api/sensors",
@@ -23,6 +24,10 @@ class SensorBase(BaseModel):
     physics_c: Optional[float] = None
     physics_m: Optional[float] = None
     ambient_temp: Optional[float] = None
+    recommended_k: Optional[float] = None
+    recommended_c: Optional[float] = None
+    recommended_threshold: Optional[float] = None
+    last_calibrated_at: Optional[datetime] =None
     is_active: bool = True
 
 class SensorCreate(SensorBase):

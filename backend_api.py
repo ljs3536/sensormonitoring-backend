@@ -17,13 +17,14 @@ import httpx
 from config import settings
 
 # routers
-from routers import sensor_router, ai_router
+from routers import sensor_router, ai_router, leak_router
 
 app = FastAPI()
 
 # 라우터들을 메인 app에 조립(Include)합니다.
 app.include_router(sensor_router.router)
 app.include_router(ai_router.router)
+app.include_router(leak_router.router)
 
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],

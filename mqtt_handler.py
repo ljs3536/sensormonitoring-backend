@@ -34,10 +34,11 @@ def setup_mqtt(memory_db, ws_manager):
             label = raw_payload.get("label", "normal") 
 
             if not hex_data: return
-            samples = parse_samples(hex_data)
+            
 
             # 1초에 128개가 들어왔다면, 각 데이터의 시간차를 계산해줍니다.
             if sensor_type == "piezo":
+                samples = parse_samples(hex_data)
                 time_step = 1.0 / len(samples) if len(samples) > 0 else 0
                 
                 # 128개 데이터를 모두 돌면서 DB에 밀어 넣습니다!
@@ -46,8 +47,9 @@ def setup_mqtt(memory_db, ws_manager):
                     current_ts = ts + (i * time_step) # 타임스탬프 미세 분배
                     
                     memory_db["piezo"]["history"].append({"value": real_val, "timestamp": current_ts})
-                    
+
             elif sensor_type == "adxl":
+                samples = parse_samples(hex_data)
                 # ADXL은 x,y,z 3개가 한 세트이므로 3개씩 묶어서 처리합니다.
                 num_records = len(samples) // 3
                 time_step = 1.0 / num_records if num_records > 0 else 0

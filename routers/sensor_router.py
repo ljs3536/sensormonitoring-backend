@@ -35,7 +35,7 @@ class SensorCreate(SensorBase):
 
 class SensorResponse(SensorCreate):
     class Config:
-        orm_mode = True # SQLAlchemy 객체를 Pydantic 모델로 자동 변환
+        from_attributes = True
 
 # --- API 엔드포인트 ---
 

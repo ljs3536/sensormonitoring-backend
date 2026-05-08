@@ -30,7 +30,7 @@ class SensorResponse(BaseModel):
 
     class Config:
         from_attributes = True  # Pydantic v2
-        # orm_mode = True       # Pydantic v1 (버전에 맞게 사용)
+        #orm_mode = True       # Pydantic v1 (버전에 맞게 사용)
         populate_by_name = True # alias로 데이터를 채울 수 있게 허용 (중요!)
 
 
@@ -90,7 +90,7 @@ class PredictRequest(BaseModel):
 
 # 🌟 1. AI 모델 갱신 (학습 트리거)
 @router.post("/train/{sensor_id}")
-async def request_train(sensor_id: str = None, days: int = 7):
+async def request_train(sensor_id: str, model_type: str, days: int = 7):
     """
     AI 서버에 학습을 지시합니다. (데이터 전송 X, 명령만 전달)
     AI 서버는 이 요청을 받으면 스스로 RDB에 접속해 최근 {days}일치 데이터를 긁어가서 학습합니다.
@@ -98,14 +98,14 @@ async def request_train(sensor_id: str = None, days: int = 7):
     async with httpx.AsyncClient(timeout=None) as client:
         response = await client.post(
             f"{settings.ai_url}/ai/proto/train", 
-            params={"sensor_id": sensor_id, "days": days}
+            params={"sensor_id": sensor_id, "model_type": model_type, "days": days}
         )
         return response.json()
 
 
 # 🌟 2. 누출 여부 예측 및 DB 업데이트
-@router.post("/predict/{sensor_type}")
-async def request_predict(sensor_type: str, req: PredictRequest, db: Session = Depends(get_db)):
+@router.post("/predict/{model_type}")
+async def request_predict(model_type: str, req: PredictRequest, db: Session = Depends(get_db)):
     """
     프론트에서 선택한 seq 번호들의 데이터를 DB에서 꺼내 AI 서버에 예측을 맡깁니다.
     """
@@ -131,7 +131,7 @@ async def request_predict(sensor_type: str, req: PredictRequest, db: Session = D
             print(req.mac_addr)
             response = await client.post(
                 f"{settings.ai_url}/ai/proto/predict", 
-                params={"sensor_id": req.mac_addr},
+                params={"sensor_id": req.mac_addr, "model_type": model_type},
                 json={"features": ai_input_data} 
             )
             if response.status_code != 200:

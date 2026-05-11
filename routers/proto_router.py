@@ -1,8 +1,8 @@
 # sensor-backend/leak_router.py
 from fastapi import APIRouter, Depends, Body, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from database_rdb import get_db, SensorData as SensorModel # SQLAlchemy 모델
+from sqlalchemy import and_, func, desc
+from database_rdb import get_db,ModelRegistry, PredictionLog, SensorData as SensorModel # SQLAlchemy 모델
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
@@ -36,7 +36,7 @@ class SensorResponse(BaseModel):
 
 # --- API 엔드포인트 ---
 
-@router.get("/list", response_model=List[SensorResponse])
+@router.get("/sensor/list", response_model=List[SensorResponse])
 async def get_proto_list(
     mac_addr: Optional[str] = Query(None),
     leak_yn: Optional[str] = Query(None),
@@ -72,7 +72,7 @@ async def get_proto_list(
     results = query.order_by(SensorModel.REG_DT.desc()).limit(500).all()
     return results
 
-@router.get("/{seq}", response_model=SensorResponse)
+@router.get("/sensor/{seq}", response_model=SensorResponse)
 async def get_proto_detail(seq: int, mac_addr: str, db: Session = Depends(get_db)):
     """
     특정 레코드를 클릭했을 때, 그래프를 그리기 위한 SENSOR_DATA(통문자열)를 포함한 상세 정보를 가져옵니다.
@@ -107,55 +107,63 @@ async def request_train(sensor_id: str, model_type: str, days: int = 7):
 
 
 # 🌟 2. 누출 여부 예측 및 DB 업데이트
-@router.post("/predict/{model_type}")
-async def request_predict(model_type: str, req: PredictRequest, db: Session = Depends(get_db)):
-    """
-    프론트에서 선택한 seq 번호들의 데이터를 DB에서 꺼내 AI 서버에 예측을 맡깁니다.
-    """
-    # 1. DB에서 선택된 데이터들 조회
+@router.post("/predict")
+async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
+    # 1. DB에서 해당 센서의 'ACTIVE' 모델 찾기
+    active_model = db.query(ModelRegistry).filter(
+        ModelRegistry.MAC_ADDR == req.mac_addr,
+        ModelRegistry.STATUS == "ACTIVE"
+    ).first()
+
+    if not active_model:
+        raise HTTPException(status_code=400, detail="이 센서에 활성화된(ACTIVE) 모델이 없습니다. 모델 관리 페이지에서 모델을 학습하고 적용해주세요.")
+
+    # 2. 예측할 데이터 조회
     records = db.query(SensorModel).filter(
-        and_(SensorModel.SEQ.in_(req.seq_list), SensorModel.MAC_ADDR == req.mac_addr)
+        SensorModel.SEQ.in_(req.seq_list), 
+        SensorModel.MAC_ADDR == req.mac_addr
     ).all()
 
     if not records:
         raise HTTPException(status_code=404, detail="요청한 데이터를 DB에서 찾을 수 없습니다.")
 
-    # 2. AI 서버에 보낼 2D Float 배열 생성
-    # AI는 [ [0.1, 0.2, ...], [0.1, 0.3, ...] ] 형태의 Batch 처리를 좋아합니다.
-    ai_input_data = []
-    for record in records:
-        fft_array = [float(val) for val in record.SENSOR_DATA.split('|')]
-        ai_input_data.append(fft_array)
+    ai_input_data = [[float(val) for val in r.SENSOR_DATA.split('|')] for r in records]
 
-    # 3. AI 서버에 예측 요청
+    # 3. AI 서버에 정확한 파일 경로와 함께 예측 요청
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            # 예시: AI 서버가 {"predictions": [{"prob": 0.95, "is_leak": "Y"}, ...]} 형태로 응답한다고 가정
-            print(req.mac_addr)
             response = await client.post(
                 f"{settings.ai_url}/ai/proto/predict", 
-                params={"sensor_id": req.mac_addr, "model_type": model_type},
-                json={"features": ai_input_data} 
+                json={
+                    "features": ai_input_data,
+                    "file_path": active_model.FILE_PATH,    # 🌟 DB에서 꺼낸 경로 전달
+                    "model_type": active_model.MODEL_TYPE   # 🌟 DB에서 꺼낸 타입 전달
+                } 
             )
-            if response.status_code != 200:
-                error_msg = response.json().get("detail", "알 수 없는 에러")
-                print(f"❌ [백엔드] AI 서버 통신 에러: {response.status_code} - {error_msg}")
-                raise HTTPException(status_code=response.status_code, detail=f"AI 서버 측 에러: {error_msg}")
-
+            response.raise_for_status()
             ai_results = response.json().get("predictions", [])
             
-    except httpx.RequestError as e:
-        # AI 서버가 아예 꺼져있거나 주소가 틀렸을 때
-        raise HTTPException(status_code=500, detail=f"AI 서버에 연결할 수 없습니다: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 서버 통신 오류: {str(e)}")
 
-    # 4. AI의 예측 결과를 받아 RDB 업데이트
+    # 4. 결과 업데이트 및 로그(PredictionLog) 저장
     updated_results = []
     for record, ai_res in zip(records, ai_results):
-        # AI 결과 적용 (소수점 2자리 %로 표현한다고 가정)
         prob_percent = round(ai_res.get("prob", 0) * 100, 2) 
+        is_leak = ai_res.get("is_leak", "N")
         
+        # [기존] 센서 데이터 마스터 테이블 업데이트
         record.LEAK_PRBBLT = str(prob_percent)
-        record.LEAK_YN = ai_res.get("is_leak", "N")
+        record.LEAK_YN = is_leak
+        
+        # 🌟 [NEW] 예측 로그 테이블에 INSERT!
+        new_log = PredictionLog(
+            MODEL_ID=active_model.MODEL_ID,
+            MAC_ADDR=req.mac_addr,
+            PROBABILITY=prob_percent,
+            RESULT=is_leak
+        )
+        db.add(new_log) # 세션에 추가
         
         updated_results.append({
             "seq": record.SEQ,
@@ -163,7 +171,50 @@ async def request_predict(model_type: str, req: PredictRequest, db: Session = De
             "leakageFirst": record.LEAK_YN
         })
 
-    db.commit() # 변경사항 DB에 영구 저장
+    db.commit() # 마스터 테이블 업데이트와 로그 INSERT를 한 번에 커밋!
 
-    # 5. 프론트엔드 화면 업데이트를 위해 결과 반환
     return {"status": "success", "updated_data": updated_results}
+
+
+# 🌟 1. 전체 모델 목록 조회 API
+@router.get("/models")
+async def get_model_registry(db: Session = Depends(get_db)):
+    # 센서별, 버전 역순(최신순)으로 정렬하여 가져옵니다.
+    models = db.query(ModelRegistry).order_by(
+        ModelRegistry.MAC_ADDR, 
+        desc(ModelRegistry.VERSION)
+    ).all()
+    
+    return [
+        {
+            "model_id": m.MODEL_ID,
+            "mac_addr": m.MAC_ADDR,
+            "model_type": m.MODEL_TYPE,
+            "version": m.VERSION,
+            "train_samples": m.TRAIN_SAMPLES,
+            "threshold_mean": round(m.THRESHOLD_MEAN, 4) if m.THRESHOLD_MEAN else 0.0,
+            "status": m.STATUS,
+            "reg_dt": m.REG_DT.strftime("%Y-%m-%d %H:%M") if m.REG_DT else "-"
+        }
+        for m in models
+    ]
+
+# 🌟 2. 특정 모델을 ACTIVE로 교체하는 API
+@router.post("/models/{model_id}/activate")
+async def activate_model(model_id: int, db: Session = Depends(get_db)):
+    target_model = db.query(ModelRegistry).filter(ModelRegistry.MODEL_ID == model_id).first()
+    
+    if not target_model:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
+    # 1) 해당 센서의 기존 'ACTIVE' 모델들을 모두 'INACTIVE'로 강등
+    db.query(ModelRegistry).filter(
+        ModelRegistry.MAC_ADDR == target_model.MAC_ADDR,
+        ModelRegistry.STATUS == "ACTIVE"
+    ).update({"STATUS": "INACTIVE"})
+
+    # 2) 선택한 모델을 'ACTIVE'로 승격
+    target_model.STATUS = "ACTIVE"
+    db.commit()
+
+    return {"message": f"[{target_model.MAC_ADDR}] 센서의 모델이 v{target_model.VERSION}으로 성공적으로 교체되었습니다."}

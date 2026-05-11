@@ -60,9 +60,12 @@ async def get_proto_list(
     #     query = query.filter(SensorModel.LEAK_YN == leak_yn)
     
     # # 3. 기간 필터
-    # if start_dt and end_dt:
-    #     query = query.filter(SensorModel.REG_DT.between(start_dt, end_dt))
-    
+    if start_dt and end_dt:
+        query = query.filter(
+            SensorModel.REG_DT >= start_dt,
+            SensorModel.REG_DT <= end_dt
+        )
+
     # 4. 누출 확률 필터 (문자열로 저장되어 있으므로 캐스팅 연산이 필요할 수 있음)
     # 여기서는 간단하게 필터링 로직만 추가합니다.
     # 최신순 정렬

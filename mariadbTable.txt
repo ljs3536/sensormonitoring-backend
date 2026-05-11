@@ -38,3 +38,20 @@ CREATE TABLE `sensors` (
   `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+-- sensor_db.tb_model_registry definition
+
+CREATE TABLE `tb_model_registry` (
+  `MODEl_ID` int(11) NOT NULL AUTO_INCREMENT,
+  `MAC_ADDR` varchar(50) NOT NULL COMMENT '맥주소',
+  `MODEL_TYPE` varchar(20) NOT NULL COMMENT 'all 또는 few',
+  `VERSION` int(11) NOT NULL COMMENT '버전관리',
+  `FILE_PATH` varchar(200) NOT NULL COMMENT '실제 파일 경로',
+  `TRAIN_SAMPLES` int(11) DEFAULT NULL COMMENT '학습에 사용된 데이터 수',
+  `THRESHOLD_MEAN` float DEFAULT NULL COMMENT '정상 거리 평균',
+  `THRESHOLD_STD` float DEFAULT NULL COMMENT '정상 거리 표준편차',
+  `STATUS` varchar(20) DEFAULT 'CANDIDATE' COMMENT 'ACTIVE, INACTIVE, CANDIDATE',
+  `REG_DT` timestamp NOT NULL DEFAULT current_timestamp() COMMENT '생성일시',
+  PRIMARY KEY (`MODEl_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

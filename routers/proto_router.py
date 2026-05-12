@@ -93,7 +93,7 @@ class PredictRequest(BaseModel):
 
 # 🌟 1. AI 모델 갱신 (학습 트리거)
 @router.post("/train/{sensor_id}")
-async def request_train(sensor_id: str, model_type: str, auto_activate: bool, days: int = 7):
+async def request_train(sensor_id: str, model_type: str, update_mode: str, auto_activate: bool, days: int = 7):
     """
     AI 서버에 학습을 지시합니다. (데이터 전송 X, 명령만 전달)
     AI 서버는 이 요청을 받으면 스스로 RDB에 접속해 최근 {days}일치 데이터를 긁어가서 학습합니다.
@@ -101,7 +101,7 @@ async def request_train(sensor_id: str, model_type: str, auto_activate: bool, da
     async with httpx.AsyncClient(timeout=None) as client:
         response = await client.post(
             f"{settings.ai_url}/ai/proto/train", 
-            params={"sensor_id": sensor_id, "model_type": model_type, "days": days, "auto_activate": auto_activate}
+            params={"sensor_id": sensor_id, "model_type": model_type, "days": days,"update_mode" : update_mode, "auto_activate": auto_activate}
         )
         return response.json()
 

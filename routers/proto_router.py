@@ -190,26 +190,24 @@ async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
 
 #  1. 전체 모델 목록 조회 API
 @router.get("/models")
-async def get_model_registry(db: Session = Depends(get_db)):
+async def get_model_registry(
+    page: int = 1,
+    size: int = 10,    
+    db: Session = Depends(get_db)
+):
+    offset = (page -1) * size
+    query = db.query(ModelRegistry).filter(ModelRegistry.STATUS != 'DELETE')
     # 센서별, 버전 역순(최신순)으로 정렬하여 가져옵니다.
-    models = db.query(ModelRegistry).order_by(
-        ModelRegistry.MAC_ADDR, 
-        desc(ModelRegistry.VERSION)
-    ).all()
+    total_count = query.count()
+    # 최신 버전순 정렬 후 페이징 처리
+    models = query.order_by(ModelRegistry.VERSION.desc()).offset(offset).limit(size).all()
     
-    return [
-        {
-            "model_id": m.MODEL_ID,
-            "mac_addr": m.MAC_ADDR,
-            "model_type": m.MODEL_TYPE,
-            "version": m.VERSION,
-            "train_samples": m.TRAIN_SAMPLES,
-            "threshold_mean": round(m.THRESHOLD_MEAN, 4) if m.THRESHOLD_MEAN else 0.0,
-            "status": m.STATUS,
-            "reg_dt": m.REG_DT.strftime("%Y-%m-%d %H:%M") if m.REG_DT else "-",
-        }
-        for m in models
-    ]
+    return {
+        "items": models,
+        "total": total_count,
+        "page": page,
+        "size": size
+    }
 
 #  2. 특정 모델을 ACTIVE로 교체하는 API
 @router.post("/models/{model_id}/activate")
@@ -273,12 +271,10 @@ async def get_model_prediction_stats(model_id: int, db: Session = Depends(get_db
 
     return {"stats": result}
 
-@router.delete("/registry/{model_id}")
-async def delete_model(model_id: int, db: Session = Depends(get_db)):
-    model = db.query(ModelRegistry).filter(ModelRegistry.MODEL_ID == model_id).first()
-    if not model: raise HTTPException(status_code=404)
-
-    # 실제 파일도 삭제하고 싶다면 os.remove(model.FILE_PATH) 추가
-    db.delete(model)
+@router.delete("/models")
+async def bulk_delete_models(ids: List[int], db: Session = Depends(get_db)):
+    db.query(ModelRegistry).filter(ModelRegistry.MODEL_ID.in_(ids)).update(
+        {"STATUS": "DELETE"}, synchronize_session=False
+    )
     db.commit()
-    return {"message": "모델이 삭제되었습니다."}
+    return {"message": f"{len(ids)}개의 모델이 삭제 대기 상태로 변경되었습니다."}

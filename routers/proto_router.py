@@ -91,22 +91,34 @@ class PredictRequest(BaseModel):
     seq_list: List[int]
     mac_addr: str
 
-# 🌟 1. AI 모델 갱신 (학습 트리거)
+class TrainRequest(BaseModel):
+    memo: str = ""
+
+#  1. AI 모델 갱신 (학습 트리거)
 @router.post("/train/{sensor_id}")
-async def request_train(sensor_id: str, model_type: str, update_mode: str, auto_activate: bool, days: int = 7):
+async def request_train(sensor_id: str, model_type: str, update_mode: str, auto_activate: bool, days: int = 7,request_data: TrainRequest = Body(...)):
     """
-    AI 서버에 학습을 지시합니다. (데이터 전송 X, 명령만 전달)
-    AI 서버는 이 요청을 받으면 스스로 RDB에 접속해 최근 {days}일치 데이터를 긁어가서 학습합니다.
+    AI 서버에 학습을 지시합니다. (중간 게이트웨이 역할)
     """
+    # 전송할 JSON 바디 데이터 구성
+    payload = {"memo": request_data.memo}
     async with httpx.AsyncClient(timeout=None) as client:
         response = await client.post(
             f"{settings.ai_url}/ai/proto/train", 
-            params={"sensor_id": sensor_id, "model_type": model_type, "days": days,"update_mode" : update_mode, "auto_activate": auto_activate}
+            params={
+                "sensor_id": sensor_id, 
+                "model_type": model_type, 
+                "days": days,
+                "update_mode": update_mode, 
+                "auto_activate": auto_activate
+            },
+            # 2. HTTP Body에 담길 JSON 데이터 
+            json=payload
         )
         return response.json()
 
 
-# 🌟 2. 누출 여부 예측 및 DB 업데이트
+#  2. 누출 여부 예측 및 DB 업데이트
 @router.post("/predict")
 async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
     # 1. DB에서 해당 센서의 'ACTIVE' 모델 찾기
@@ -136,8 +148,8 @@ async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
                 f"{settings.ai_url}/ai/proto/predict", 
                 json={
                     "features": ai_input_data,
-                    "file_path": active_model.FILE_PATH,    # 🌟 DB에서 꺼낸 경로 전달
-                    "model_type": active_model.MODEL_TYPE   # 🌟 DB에서 꺼낸 타입 전달
+                    "file_path": active_model.FILE_PATH,    #  DB에서 꺼낸 경로 전달
+                    "model_type": active_model.MODEL_TYPE   #  DB에서 꺼낸 타입 전달
                 } 
             )
             response.raise_for_status()
@@ -156,7 +168,7 @@ async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
         record.LEAK_PRBBLT = str(prob_percent)
         record.LEAK_YN = is_leak
         
-        # 🌟 [NEW] 예측 로그 테이블에 INSERT!
+        #  [NEW] 예측 로그 테이블에 INSERT!
         new_log = PredictionLog(
             MODEL_ID=active_model.MODEL_ID,
             MAC_ADDR=req.mac_addr,
@@ -176,7 +188,7 @@ async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
     return {"status": "success", "updated_data": updated_results}
 
 
-# 🌟 1. 전체 모델 목록 조회 API
+#  1. 전체 모델 목록 조회 API
 @router.get("/models")
 async def get_model_registry(db: Session = Depends(get_db)):
     # 센서별, 버전 역순(최신순)으로 정렬하여 가져옵니다.
@@ -194,12 +206,12 @@ async def get_model_registry(db: Session = Depends(get_db)):
             "train_samples": m.TRAIN_SAMPLES,
             "threshold_mean": round(m.THRESHOLD_MEAN, 4) if m.THRESHOLD_MEAN else 0.0,
             "status": m.STATUS,
-            "reg_dt": m.REG_DT.strftime("%Y-%m-%d %H:%M") if m.REG_DT else "-"
+            "reg_dt": m.REG_DT.strftime("%Y-%m-%d %H:%M") if m.REG_DT else "-",
         }
         for m in models
     ]
 
-# 🌟 2. 특정 모델을 ACTIVE로 교체하는 API
+#  2. 특정 모델을 ACTIVE로 교체하는 API
 @router.post("/models/{model_id}/activate")
 async def activate_model(model_id: int, db: Session = Depends(get_db)):
     target_model = db.query(ModelRegistry).filter(ModelRegistry.MODEL_ID == model_id).first()
@@ -233,7 +245,8 @@ async def get_model_detail(model_id: int, db: Session = Depends(get_db)):
         "version": model.VERSION,
         "status": model.STATUS,
         "eval_metrics": model.EVAL_METRICS,
-        "reg_dt": model.REG_DT.strftime("%Y-%m-%d %H:%M:%S") if model.REG_DT else "-"
+        "reg_dt": model.REG_DT.strftime("%Y-%m-%d %H:%M:%S") if model.REG_DT else "-",
+        "memo": model.MEMO
     }
 
 # 2. 모델 실전 예측 통계 (히스토그램용) API
@@ -259,3 +272,13 @@ async def get_model_prediction_stats(model_id: int, db: Session = Depends(get_db
         result[str(bin_val)] = s[1]
 
     return {"stats": result}
+
+@router.delete("/registry/{model_id}")
+async def delete_model(model_id: int, db: Session = Depends(get_db)):
+    model = db.query(ModelRegistry).filter(ModelRegistry.MODEL_ID == model_id).first()
+    if not model: raise HTTPException(status_code=404)
+
+    # 실제 파일도 삭제하고 싶다면 os.remove(model.FILE_PATH) 추가
+    db.delete(model)
+    db.commit()
+    return {"message": "모델이 삭제되었습니다."}

@@ -17,7 +17,7 @@ import httpx
 from config import settings
 
 # routers
-from routers import sensor_router, ai_router, proto_router
+from routers import sensor_router, ai_router, proto_router,proto_models_router, proto_sensor_router, proto_logs_router
 
 app = FastAPI()
 
@@ -25,6 +25,9 @@ app = FastAPI()
 app.include_router(sensor_router.router)
 app.include_router(ai_router.router)
 app.include_router(proto_router.router)
+app.include_router(proto_sensor_router.router)
+app.include_router(proto_models_router.router)
+app.include_router(proto_logs_router.router)
 
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],

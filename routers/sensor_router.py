@@ -1,5 +1,5 @@
 # sensor-backend/routers/sensor_router.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -40,9 +40,22 @@ class SensorResponse(SensorCreate):
 # --- API 엔드포인트 ---
 
 @router.get("/", response_model=List[SensorResponse])
-async def get_all_sensors(db: Session = Depends(get_db)):
-    """모든 센서 목록을 조회합니다."""
-    sensors = db.query(Sensor).all()
+async def get_all_sensors(
+    sensor_type: Optional[str] = Query(None, description="센서 타입 (normal, piezo, adxl 등)"),
+    is_active: Optional[bool] = Query(None, description="활성화 여부"),
+    db: Session = Depends(get_db)
+):
+    """조건에 맞는 센서 목록을 조회합니다. (백엔드 필터링)"""
+    query = db.query(Sensor)
+    
+    # 🌟 쿼리 파라미터가 있을 때만 필터링 적용
+    if sensor_type:
+        query = query.filter(Sensor.type == sensor_type)
+    
+    if is_active is not None:
+        query = query.filter(Sensor.is_active == is_active)
+        
+    sensors = query.all()
     return sensors
 
 @router.post("/", response_model=SensorResponse)

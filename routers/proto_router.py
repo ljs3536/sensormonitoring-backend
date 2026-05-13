@@ -34,9 +34,15 @@ class SensorResponse(BaseModel):
         populate_by_name = True # alias로 데이터를 채울 수 있게 허용 (중요!)
 
 
+class SensorPaginatedResponse(BaseModel):
+    items: List[SensorResponse]
+    total: int
+    page: int
+    size: int
+    
 # --- API 엔드포인트 ---
 
-@router.get("/sensor/list", response_model=List[SensorResponse])
+@router.get("/sensor/list", response_model=SensorPaginatedResponse)
 async def get_proto_list(
     mac_addr: Optional[str] = Query(None),
     leak_yn: Optional[str] = Query(None),
@@ -44,11 +50,15 @@ async def get_proto_list(
     end_dt: Optional[datetime] = Query(None),
     prob_min: Optional[float] = Query(None),
     prob_max: Optional[float] = Query(None),
+    page: int = 1,
+    size: int = 50,
     db: Session = Depends(get_db)
 ):
     """
-    LeakFilterBar의 검색 조건에 따라 센서 데이터 이력을 조회합니다.
+    ProtoFilterBar의 검색 조건에 따라 센서 데이터 이력을 조회합니다.
     """
+
+    offset = (page - 1) * size
     query = db.query(SensorModel)
 
     # 1. 맥주소 필터
@@ -67,10 +77,19 @@ async def get_proto_list(
         )
 
     # 4. 누출 확률 필터 (문자열로 저장되어 있으므로 캐스팅 연산이 필요할 수 있음)
-    # 여기서는 간단하게 필터링 로직만 추가합니다.
+    
     # 최신순 정렬
-    results = query.order_by(SensorModel.REG_DT.desc()).limit(500).all()
-    return results
+    query = query.order_by(SensorModel.REG_DT.desc())
+
+    total_count = query.count()
+    items = query.offset(offset).limit(size).all()
+
+    return {
+        "items": items,
+        "total": total_count,
+        "page": page,
+        "size": size
+    }
 
 @router.get("/sensor/{seq}", response_model=SensorResponse)
 async def get_proto_detail(seq: int, mac_addr: str, db: Session = Depends(get_db)):

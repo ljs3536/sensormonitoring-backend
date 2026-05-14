@@ -38,6 +38,7 @@ class PredictionLog(Base):
     MAC_ADDR = Column(String(50), nullable=False)
     PROBABILITY = Column(Float, nullable=False)
     RESULT = Column(CHAR(1), nullable=False)
+    REASON = Column(Text, nullable=True)
     REG_DT = Column(DateTime, default=lambda: datetime.now(KST))
 
 

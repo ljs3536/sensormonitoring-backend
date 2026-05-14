@@ -59,15 +59,18 @@ CREATE TABLE `tb_model_registry` (
 
 -- sensor_db.tb_prediction_log definition
 
+-- sensor_db.tb_prediction_log definition
+
 CREATE TABLE `tb_prediction_log` (
   `LOG_ID` int(11) NOT NULL AUTO_INCREMENT COMMENT '로그 고유번호',
   `MODEL_ID` int(11) NOT NULL COMMENT '사용된 모델 ID (tb_model_registry 참조)',
   `MAC_ADDR` varchar(50) NOT NULL COMMENT '센서 맥주소',
   `PROBABILITY` float NOT NULL COMMENT 'AI가 계산한 누출 확률(%)',
   `RESULT` char(1) NOT NULL COMMENT '최종 판단 결과 (Y/N)',
+  `REASON` text DEFAULT NULL COMMENT 'AI 분석 사유 (누출 판단 근거)',
   `REG_DT` timestamp NULL DEFAULT current_timestamp() COMMENT '예측 일시',
   PRIMARY KEY (`LOG_ID`),
   KEY `idx_model_id` (`MODEL_ID`),
   KEY `idx_mac_addr` (`MAC_ADDR`),
   KEY `idx_reg_dt` (`REG_DT`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=14333 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

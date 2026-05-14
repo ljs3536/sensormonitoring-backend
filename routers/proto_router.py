@@ -96,7 +96,9 @@ async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
     for record, ai_res in zip(records, ai_results):
         prob_percent = round(ai_res.get("prob", 0) * 100, 2) 
         is_leak = ai_res.get("is_leak", "N")
+        reason = ai_res.get("reason", None)
         
+        print(reason)
         # [기존] 센서 데이터 마스터 테이블 업데이트
         record.LEAK_PRBBLT = str(prob_percent)
         record.LEAK_YN = is_leak
@@ -106,14 +108,16 @@ async def request_predict(req: PredictRequest, db: Session = Depends(get_db)):
             MODEL_ID=active_model.MODEL_ID,
             MAC_ADDR=req.mac_addr,
             PROBABILITY=prob_percent,
-            RESULT=is_leak
+            RESULT=is_leak,
+            REASON=reason
         )
         db.add(new_log) # 세션에 추가
         
         updated_results.append({
             "seq": record.SEQ,
             "leakProbability": record.LEAK_PRBBLT,
-            "leakageFirst": record.LEAK_YN
+            "leakageFirst": record.LEAK_YN,
+            "reason": reason
         })
 
     db.commit() # 마스터 테이블 업데이트와 로그 INSERT를 한 번에 커밋!
